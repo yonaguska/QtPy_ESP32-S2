@@ -39,5 +39,16 @@ QtPy ESP32-S2
     'STEMMA_I2C', 'TX', 'UART', 'board_id']
 >>>
 
+There's a photo showing my breadboarded unit. The QtPy, just above the breadboard, is 
+stacked with a LiPo battery charger and SD card BFFs. I use an external LiPo charger, 
+shown on the breadboard with a green LED lit. To the left of the breadboarded LiPo 
+charger is a BME280 sensor, and just to the left of that is a DS3231 RTC with an onboard 
+24LC32 memory device. To the right of the LiPo charger is a TPL5110, a timer set to a 
+5 minute timeout. The TPL5110 controls the power to the QtPy's battery BFF; every 5 
+minutes the TPL5110 wakes up the QtPy for processing. The QtPy processes the sensors, 
+and sends the data, via MQTT, to a Raspberry Pi RP400 where it is processed for display 
+by Grafana.
 
+The RP400 has containers for eclipse-mosquitto (MQTT), telegraf (mosquitto_to_influxdb),
+influxed (a time-series database), and grafana (a data visualization tool). 
 
