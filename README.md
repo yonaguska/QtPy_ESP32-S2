@@ -50,5 +50,7 @@ and sends the data, via MQTT, to a Raspberry Pi RP400 where it is processed for 
 by Grafana.
 
 The RP400 has containers for eclipse-mosquitto (MQTT), telegraf (mosquitto_to_influxdb),
-influxed (a time-series database), and grafana (a data visualization tool). 
+influxed (a time-series database), and grafana (a data visualization tool). There are 
+screenshots showing portainer's view of the containers running on Docker on the RP400,
+as well as graphs of the data using Grafana.
 
