@@ -3,7 +3,7 @@
 
 secrets = {
     'ssid' : ’YOUR_WIFI_SSID’,
-    'password' : ‘YOUR _SSID_PASSWORD,
+    'password' : ‘YOUR_SSID_PASSWORD’,
 
     # 'broker' : 'io.adafruit.com',
     'port' : 1883,
