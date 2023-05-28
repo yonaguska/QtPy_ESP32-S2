@@ -6,17 +6,18 @@
    new and existing hardware.
 
    The new modules include support for:
-   - i2c       (stemma qt and onboard)
-   - neopixel  (onboard indicator)
-   - aht20     (temp and humidity)
-   - sht40     (temp and humidity)
-   - bme280    (temp, humidity, pressure, and altitude)
-   - bme680    (temp, humidity, pressure, altitude, and voc/gas)
-   - ds3231    (timestamp, set via NTP)
-   - wifi      (if present)
-   - lc709203f (feather2 s2/s3)
-   - ina260    (option for testing)
-   - 24lc32    (4kB EEPROM on the DS3231)
+   - i2c        (stemma qt and onboard)
+   - neopixel   (onboard indicator)
+   - aht20      (temp and humidity)
+   - sht40      (temp and humidity)
+   - bme280     (temp, humidity, pressure, and altitude)
+   - bme680     (temp, humidity, pressure, altitude, and voc/gas)
+   - ds3231     (timestamp, set via NTP)
+   - wifi       (if present)
+   - lc709203f  (feather2 s2/s3)
+   - ina260     (option for testing)
+   - 24lc32     (4kB EEPROM on the DS3231)
+   - soil_probe (separate probe using to pins; power and analog input)
 
    The code accommodates adding hardware, detecting it, and using it automatically
    It also allows the hardware to be on existing I2C pins or a STEMMA QT connector.
@@ -55,10 +56,10 @@ import watchdog
 import wifi
 import storage
 import board
-from board import A0  # ADC/DAC
-from board import A1  # ADC/DAC
-from board import A2  # ADC (soil monitor)
-from board import A3  # ADC
+#from board import A0  # ADC/DAC, used as digital VCC for soil probe
+from board import A1  # ADC/DAC 12v Battery monitor 12k-3k divider
+from board import A2  # ADC QtPy BFF battery voltage
+#from board import A3  # ADC for soil probe
 import digitalio
 from digitalio import DigitalInOut
 import analogio
@@ -83,10 +84,12 @@ import mod_bme680
 import mod_ina260
 import mod_ds3231
 import mod_24lc32
+import mod_soil_probe
+import mod_battery_voltage
 
 
 """ basic global variables ... very important!!! """
-version = 8.1 # Working copy with sensors, RTC w/NTP, and talks to MQTT via Wifi
+version = 8.4 # Working copy with sensors, RTC w/NTP, soil_probe, external battery probe, and talks to MQTT via Wifi
 code_status = "work in progress"
 sleep_time = 60 * 5 #  sleep_time = 60 * 5   .... or 60 for testing
 watchdog_timeout = sleep_time + 30
@@ -107,7 +110,8 @@ hardware_reset_duration = 0.1
 trigger_duration = 0.2
 error_sleep = sleep_time
 sd_card = False
-soil_moisture_detector_used = False
+soil_moisture_detector_used = True
+battery_probe_used = True
 sd_card_used = True
 testing_wdt = False
 set_ds3231 = False   # <<<<<<<<<<< IF YOU NEED TO SET THE RTC, USING NTP >>>>>>>>
@@ -169,8 +173,6 @@ def get_voltage(pin):
 
 def deep_sleep(this_sleep_time):
     """ Do a deep sleep to conserve battery and close logger file handle """
-    my_print("info" ,"Sleeping for {} seconds...".format(this_sleep_time))
-    file_handler.close()  # If you're done with the FileHandler, close it
     # prepare and sleep
     time_alarm = alarm.time.TimeAlarm(monotonic_time=time.monotonic() + this_sleep_time)
     alarm.exit_and_deep_sleep_until_alarms(time_alarm)
@@ -349,7 +351,7 @@ except Exception as ex:
     print("Error with spi ... {}".format(ex))
 
 # print filesystem contents
-print_directory("/sd")
+if sdcard_found: print_directory("/sd")
 
 #### Initialize log functionality
 sdcard_filesystem = False
@@ -366,20 +368,19 @@ except Exception as ex:
 # test logging
 my_print("info", "Testing log")
 
+#### Analog pins for battery state on qtpy
+#adc0 = analogio.AnalogIn(A0)  # unused ADC/DAC, used as digital for Vcc of soil moisture probe
+#adc1 = analogio.AnalogIn(A1)  # 12v Battery monitor 12k-3k divider ... handled in module
+adc2 = analogio.AnalogIn(A2)  # QtPy BFF voltage
+#adc3 = analogio.AnalogIn(A3)  # Soil probe ... handled in module
 
 #### Soil moisture detector
 if soil_moisture_detector_used:
-    ## Power pin for soil moisture detector
-    soil_moisture_power = digitalio.DigitalInOut(board.D11) # GPIO/D11
-    soil_moisture_power.direction = digitalio.Direction.OUTPUT
-    soil_moisture_power.value = True
+    soil_probe_ready, soil_moisture_power, soil_adc = mod_soil_probe.init(model)
 
-#### Analog pins for battery state on qtpy
-#adc0 = analogio.AnalogIn(A0)  # unused DAC
-#adc1 = analogio.AnalogIn(A1)  # unused DAC
-#adc2 = analogio.AnalogIn(A2)   # Soil monitor
-#adc3 = analogio.AnalogIn(A3)  # QtPy BFF voltage
-adc2 = analogio.AnalogIn(A2)  # QtPy BFF voltage
+#### Battery probe
+if battery_probe_used:
+    battery_probe_ready, battery_adc = mod_battery_voltage.init(model)
 
 #### Watchdog timer
 trigger = digitalio.DigitalInOut(board.D6) # GPIO/D6 was A1(GPIO/D17)
@@ -410,12 +411,6 @@ my_print("info", "code_status is {}".format(code_status))
 
 # retrigger the hardware watchdog
 retrigger_hardware_watchdog(trigger_duration)
-
-# Set up the soil moisture sensor
-if soil_moisture_detector_used:
-    # insure soil detector is powered on
-    my_print("info", "power up soil moisture detector")
-    soil_moisture_power.value = True
 
 # assign a battery sensor
 if (model == "featherS2"):
@@ -496,10 +491,12 @@ else:
 
 
 # indicate the health of the environmental sensors
+env_sensors_found = True
 if not (aht20_found or sht40_found or bme280_found or bme680_found):
     my_print("info" ,"No sensor found, sleeping")
     mod_neopixel.no_sensors()
-    deep_sleep(error_sleep)  # recover by deep sleep reset
+    env_sensors_found = False
+    #deep_sleep(error_sleep)  # recover by deep sleep reset
 
 # Set up the DS3231 RTC, set it if necessary
 ds3231 = mod_ds3231.init(i2c_board, i2c_qwiic)
@@ -515,29 +512,42 @@ if eeprom != None:
 else:
     my_print("info", "EEPROM not found")
 
-
-#### READ SENSORS
 # create a sensors dictionary
 sensors = {}
-if aht20 != None:
-    sensor = mod_aht20.read(aht20)
-    sensors.update({sensor['type']:sensor})
+if env_sensors_found:
+    #### READ SENSORS
+    if aht20 != None:
+        sensor = mod_aht20.read(aht20)
+        sensors.update({sensor['type']:sensor})
 
-if sht40 != None:
-    sensor = mod_sht40.read(sht40)
-    sensors.update({sensor['type']:sensor})
+    if sht40 != None:
+        sensor = mod_sht40.read(sht40)
+        sensors.update({sensor['type']:sensor})
 
-if bme280 != None:
-    sensor = mod_bme280.read(bme280)
-    sensors.update({sensor['type']:sensor})
+    if bme280 != None:
+        sensor = mod_bme280.read(bme280)
+        sensors.update({sensor['type']:sensor})
 
-if bme680 != None:
-    sensor = mod_bme680.read(bme680)
-    sensors.update({sensor['type']:sensor})
+    if bme680 != None:
+        sensor = mod_bme680.read(bme680)
+        sensors.update({sensor['type']:sensor})
 
-if ds3231 != None:
-    sensor = mod_ds3231.read(ds3231)
-    sensors.update({sensor['type']:sensor})
+    if ds3231 != None:
+        sensor = mod_ds3231.read(ds3231)
+        sensors.update({sensor['type']:sensor})
+
+    if soil_moisture_detector_used:
+        sensor = mod_soil_probe.read(soil_moisture_power, soil_adc)
+        sensors.update({sensor['type']:sensor})
+
+    if battery_probe_used:
+        sensor = mod_battery_voltage.read(battery_adc)
+        sensors.update({sensor['type']:sensor})
+        while(False):
+            time.sleep(1.0)
+            sensor = mod_battery_voltage.read(battery_adc)
+            print("divider {} voltage {}".format(sensor["divider_reading"], sensor["battery_voltage"]))
+
 
 if eeprom != None:
     # Check the upper EEPROM for flag ... bytearray\(b'KFRANKS'\)
@@ -565,7 +575,6 @@ if (model == "qtpy") and using_bff:
     if charger == "solar": voltage = vA2
     if charger == "bff": voltage = bff
     sensors.update({"battery_voltage": voltage})
-
 
 sensors.update({"version": version})
 sensors.update({"code_status": code_status})
@@ -681,23 +690,24 @@ else:
 # topic_prefix is qtpy/xxx, where xxx is the last byte of the IP for this model
 if (model == "qtpy") or (model == "featherS2") or (model == "featherS3"):
     publish_to_broker("{}/ResetReason".format(topic_prefix), "f", float("{}.0".format(reset_reason)))
-    if aht20_found:
-        publish_to_broker("{}/AHT20/Temp".format(topic_prefix), "F", sensors['aht20']['tempF'])
-        publish_to_broker("{}/AHT20/Humidity".format(topic_prefix), "Percent", sensors['aht20']['humP'])
-    if sht40_found:
-        publish_to_broker("{}/SHT40/Temp".format(topic_prefix), "F", sensors['sht40']['tempF'])
-        publish_to_broker("{}/SHT40/Humidity".format(topic_prefix), "Percent", sensors['sht40']['tempF'])
-    if bme280_found:
-        publish_to_broker("{}/BME280/Temp".format(topic_prefix), "F", sensors['bme280']['tempF'])
-        publish_to_broker("{}/BME280/Humidity".format(topic_prefix), "Percent", sensors['bme280']['humP'])
-        publish_to_broker("{}/BME280/Pressure".format(topic_prefix), "inHG", sensors['bme280']['presH'])
-        publish_to_broker("{}/BME280/Altitude".format(topic_prefix), "meters", sensors['bme280']['altM'])
-    if bme680_found:
-        publish_to_broker("{}/BME680/Temp".format(topic_prefix), "F", sensors['bme680']['tempF'])
-        publish_to_broker("{}/BME680/Humidity".format(topic_prefix), "Percent", sensors['bme680']['humP'])
-        publish_to_broker("{}/BME680/Pressure".format(topic_prefix), "inHG", sensors['bme680']['presH'])
-        publish_to_broker("{}/BME680/Altitude".format(topic_prefix), "meters", sensors['bme680']['altM'])
-        publish_to_broker("{}/BME680/Gas".format(topic_prefix), "ohm", sensors['bme680']['gasOhm'])
+    if env_sensors_found:
+        if aht20_found:
+            publish_to_broker("{}/AHT20/Temp".format(topic_prefix), "F", sensors['aht20']['tempF'])
+            publish_to_broker("{}/AHT20/Humidity".format(topic_prefix), "Percent", sensors['aht20']['humP'])
+        if sht40_found:
+            publish_to_broker("{}/SHT40/Temp".format(topic_prefix), "F", sensors['sht40']['tempF'])
+            publish_to_broker("{}/SHT40/Humidity".format(topic_prefix), "Percent", sensors['sht40']['tempF'])
+        if bme280_found:
+            publish_to_broker("{}/BME280/Temp".format(topic_prefix), "F", sensors['bme280']['tempF'])
+            publish_to_broker("{}/BME280/Humidity".format(topic_prefix), "Percent", sensors['bme280']['humP'])
+            publish_to_broker("{}/BME280/Pressure".format(topic_prefix), "inHG", sensors['bme280']['presH'])
+            publish_to_broker("{}/BME280/Altitude".format(topic_prefix), "meters", sensors['bme280']['altM'])
+        if bme680_found:
+            publish_to_broker("{}/BME680/Temp".format(topic_prefix), "F", sensors['bme680']['tempF'])
+            publish_to_broker("{}/BME680/Humidity".format(topic_prefix), "Percent", sensors['bme680']['humP'])
+            publish_to_broker("{}/BME680/Pressure".format(topic_prefix), "inHG", sensors['bme680']['presH'])
+            publish_to_broker("{}/BME680/Altitude".format(topic_prefix), "meters", sensors['bme680']['altM'])
+            publish_to_broker("{}/BME680/Gas".format(topic_prefix), "ohm", sensors['bme680']['gasOhm'])
 
     if ina260_found:
         publish_to_broker("{}/INA260/Battery".format(topic_prefix), "V", ina260.voltage)
@@ -705,6 +715,10 @@ if (model == "qtpy") or (model == "featherS2") or (model == "featherS3"):
         publish_to_broker("{}/INA260/Power".format(topic_prefix), "mW", ina260.power)
     if (model == "qtpy") and using_bff:
         publish_to_broker("{}/BFF/BatteryADC".format(topic_prefix), "V", voltage)
+        if soil_moisture_detector_used:
+            publish_to_broker("{}/Soil/Moisture".format(topic_prefix), "Percent", sensors['soil_probe']['soil_value'])
+        if battery_probe_used:
+            publish_to_broker("{}/Battery/Voltage".format(topic_prefix), "Volts", sensors['battery']['battery_voltage'])
     elif (model == "featherS2"):
         if battery_sensor_found:
             voltage = battery_sensor.cell_voltage
@@ -712,9 +726,9 @@ if (model == "qtpy") or (model == "featherS2") or (model == "featherS3"):
             publish_to_broker("{}/LC709203F/BatteryVoltage".format(topic_prefix), "V", voltage)
             publish_to_broker("{}/LC709203F/BatteryPercent".format(topic_prefix), "Percent", cell_percent)
         if soil_moisture_detector_used:
-            soil_probe_voltage = get_voltage(adc2)
-            soil_value = map_range(soil_probe_voltage, 0.899977 , 2.35596, 100, 0)
-            publish_to_broker("{}/Soil/Moisture".format(topic_prefix), "Percent", soil_value)
+            publish_to_broker("{}/Soil/Moisture".format(topic_prefix), "Percent", sensors['soil_probe']['soil_value'])
+        if battery_probe_used:
+            publish_to_broker("{}/Battery/Voltage".format(topic_prefix), "Volts", sensors['battery']['battery_voltage'])
     else:
         pass
 
@@ -727,44 +741,49 @@ if (model == "featherS3"):
     publish_to_broker("{}/Onboard/CPUTemp".format(topic_prefix), "F", (9.0/5.0)*microcontroller.cpus[0].temperature + 32.0)
 my_print("info" ,"")
 
-if soil_moisture_detector_used:
-    # insure soil detector is powered off
-    my_print("info", "power down soil moisture detector")
-    soil_moisture_power.value = False
-
 # wait for data to get uploaded
 upload_wait = 5
 my_print("info" ,"Wait {} seconds for the data to get uploaded".format(upload_wait))
 time.sleep(upload_wait)
 disconnect_from_broker()
 
-# print filesystem contents
-print_directory("/sd")
 
 #### the end is near
 powerdown_method = "TPL5110"
-set_pin = False
 if powerdown_method == "deep_sleep":
+    my_print("info" ,"Deep sleep for {} seconds...".format(this_sleep_time))
+    if sdcard_found:
+        my_print("info" ,"Closing logger filehandle...this forces writes to SD")
+        file_handler.close()  # We're done with the logger file handle, close it
+        print_directory("/sd") # print filesystem contents
     # Set up for deep sleep to conserve battery
-    deep_sleep(sleep_time)  # Normal stuff and closes logger file handle
+    deep_sleep(sleep_time)  # Normal stuff
 if powerdown_method == "watchdog":
     # feed the watchdog
     my_print("info" ,"Feed the watchdog")
     wdt.feed()
-    deep_sleep(sleep_time)  # Normal stuff and closes logger file handle
+    my_print("info" ,"Deep sleep for {} seconds...".format(this_sleep_time))
+    if sdcard_found:
+        my_print("info" ,"Closing logger filehandle...this forces writes to SD")
+        file_handler.close()  # We're done with the logger file handle, close it
+        print_directory("/sd") # print filesystem contents
+    deep_sleep(sleep_time)  # Normal stuff
 if powerdown_method == "TPL5110":
     #### Set up the pin that indicates DONE for the TPL5110, the circuit cuts off our supply
     # set it True (DONE)
     this_delay = 2
     my_print("info" ,"Telling TPL5110 to shut down power...in {} seconds".format(this_delay))
-    file_handler.close()  # We're done with the logger file handle, close it
+    if sdcard_found:
+        my_print("info" ,"Closing logger filehandle...this forces writes to SD")
+        file_handler.close()  # We're done with the logger file handle, close it
+        print_directory("/sd") # print filesystem contents
     time.sleep(this_delay)
-    if not set_pin:
-        DONE = digitalio.DigitalInOut(board.RX) # GPIO/RX
-        DONE.direction = digitalio.Direction.OUTPUT
-        DONE.value = False
-        set_pin = True
-        time.sleep(0.2)
-        DONE.value = True
-        time.sleep(0.8)
-        DONE.value = False
+    DONE = digitalio.DigitalInOut(board.RX) # GPIO/RX
+    DONE.direction = digitalio.Direction.OUTPUT
+    DONE.value = False
+    set_pin = True
+    time.sleep(0.2)
+    DONE.value = True
+    time.sleep(0.8)
+    DONE.value = False
+    deep_sleep(sleep_time)  # Normal stuff
