@@ -17,7 +17,8 @@
    - lc709203f  (feather2 s2/s3)
    - ina260     (option for testing)
    - 24lc32     (4kB EEPROM on the DS3231)
-   - soil_probe (separate probe using to pins; power and analog input)
+   - soil_probe (separate probe; power and analog input)
+   - battery    (external battery voltage monitor...useful for solar chargers)
 
    The code accommodates adding hardware, detecting it, and using it automatically
    It also allows the hardware to be on existing I2C pins or a STEMMA QT connector.
