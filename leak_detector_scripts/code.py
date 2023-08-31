@@ -90,7 +90,7 @@ import mod_battery_voltage
 
 
 """ basic global variables ... very important!!! """
-version = 8.4 # Working copy with sensors, RTC w/NTP, soil_probe, external battery probe, and talks to MQTT via Wifi
+version = 8.5 # Working copy with sensors, RTC w/NTP, soil_probe, external battery probe, and talks to MQTT via Wifi
 code_status = "work in progress"
 sleep_time = 60 * 5 #  sleep_time = 60 * 5   .... or 60 for testing
 watchdog_timeout = sleep_time + 30
@@ -367,7 +367,7 @@ try:
 except Exception as ex:
     print("Error with sdcard filesystem ... {}".format(ex))
 # test logging
-my_print("info", "Testing log")
+#my_print("info", "Testing log")
 
 #### Analog pins for battery state on qtpy
 #adc0 = analogio.AnalogIn(A0)  # unused ADC/DAC, used as digital for Vcc of soil moisture probe
@@ -682,10 +682,10 @@ mod_neopixel.connected_health(do_send_to_broker)
 #if do_connect_to_broker:
 #    #io.loop()
 #    mqtt_client.loop()
-if debug:
-    my_print("info" ,"debug:\n")
-else:
-    my_print("info" ,"\n")
+#if debug:
+#    my_print("info" ,"debug:\n")
+#else:
+#    my_print("info" ,"\n")
 
 # publish_to_broker(tag, nomenclature, value)
 # topic_prefix is qtpy/xxx, where xxx is the last byte of the IP for this model
@@ -755,6 +755,7 @@ if powerdown_method == "deep_sleep":
     my_print("info" ,"Deep sleep for {} seconds...".format(this_sleep_time))
     if sdcard_found:
         my_print("info" ,"Closing logger filehandle...this forces writes to SD")
+        my_print("info" ,"")
         file_handler.close()  # We're done with the logger file handle, close it
         print_directory("/sd") # print filesystem contents
     # Set up for deep sleep to conserve battery
@@ -766,6 +767,7 @@ if powerdown_method == "watchdog":
     my_print("info" ,"Deep sleep for {} seconds...".format(this_sleep_time))
     if sdcard_found:
         my_print("info" ,"Closing logger filehandle...this forces writes to SD")
+        my_print("info" ,"")
         file_handler.close()  # We're done with the logger file handle, close it
         print_directory("/sd") # print filesystem contents
     deep_sleep(sleep_time)  # Normal stuff
@@ -776,6 +778,7 @@ if powerdown_method == "TPL5110":
     my_print("info" ,"Telling TPL5110 to shut down power...in {} seconds".format(this_delay))
     if sdcard_found:
         my_print("info" ,"Closing logger filehandle...this forces writes to SD")
+        my_print("info" ,"")
         file_handler.close()  # We're done with the logger file handle, close it
         print_directory("/sd") # print filesystem contents
     time.sleep(this_delay)
