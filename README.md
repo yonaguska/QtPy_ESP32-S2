@@ -41,18 +41,31 @@ QtPy ESP32-S2
     'STEMMA_I2C', 'TX', 'UART', 'board_id']
 >>>
 
-There's a photo showing my breadboarded unit. The QtPy, just above the breadboard, is 
+There's a photo, in images, showing my breadboarded prototype. The QtPy, just above the breadboard, is 
 stacked with a LiPo battery charger and SD card BFFs. I use an external LiPo charger, 
-shown on the breadboard with a green LED lit. To the left of the breadboarded LiPo 
+shown on the breadboard with a green LED light. To the left of the breadboarded LiPo 
 charger is a BME280 sensor, and just to the left of that is a DS3231 RTC with an onboard 
 24LC32 memory device. To the right of the LiPo charger is a TPL5110, a timer set to a 
 5 minute timeout. The TPL5110 controls the power to the QtPy's battery BFF; every 5 
-minutes the TPL5110 wakes up the QtPy for processing. The QtPy processes the sensors, 
-and sends the data, via MQTT, to a Raspberry Pi RP400 where it is processed for display 
+minutes the TPL5110 wakes up the QtPy for processing. The QtPy processes the sensors 
+and sends the data via MQTT to a Raspberry Pi RP400, which is processed for display 
 by Grafana.
 
 The RP400 has containers for eclipse-mosquitto (MQTT), telegraf (mosquitto_to_influxdb),
-influxed (a time-series database), and grafana (a data visualization tool). There are 
+influxd (a time-series database), and grafana (a data visualization tool). There are 
 screenshots showing portainer's view of the containers running on Docker on the RP400,
 as well as graphs of the data using Grafana.
+
+The fritzing_files directory contains files associated with prototyping and the overall
+context of the project. You can breadboard the system using this information.
+
+The images directory contains, as the name implies, photos of the prototype and finished
+circuit board versions of the system.
+
+The printables directory contains files for 3D printing a baseboard to mount the LiPo and PCB
+I created for the project. The base is primarily useful for testing, but the 3D model can
+be extended to create an enclosure. I've added the Fusion 360 model and STL files if you
+want to fiddle with them. There are photos of this part of the project.
+
+The backend directory has screenshots associated with the RP400-based backend containers.
 
