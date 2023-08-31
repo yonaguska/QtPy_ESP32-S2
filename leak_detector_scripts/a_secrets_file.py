@@ -13,6 +13,6 @@ secrets = {
 
 
     'broker' : ‘YOUR_MQTT_BROKER_IP’,
-    #'user' : ‘YOUR’_MQTT_USERNAME,
+    #'user' : ‘YOUR_MQTT_USERNAME,
     #'pass' : ‘YOUR_MQTT_PASSWORD’,
 }
